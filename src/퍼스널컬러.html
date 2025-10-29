@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>귀여운 퍼스널 컬러 찾기 💖 (Canvas)</title>
+    <style>
+        /* CSS: 캔버스 컨테이너와 배경 스타일 */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f7f3f3;
+            color: #4a4a4a;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden; 
+        }
+
+        .canvas-container {
+            background-color: #ffffff;
+            border-radius: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            position: relative;
+            /* 반응형 처리를 위해 최대 너비 설정 */
+            width: 90%;
+            max-width: 500px;
+            aspect-ratio: 1 / 1.3; /* 너비 대비 높이 비율 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 로딩 스피너 (JS 로직이 복잡할 경우를 대비해 남겨둠) */
+        .loading-spinner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 4px solid #f3f3f3; 
+            border-top: 4px solid #ff9aa2; 
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            display: none; 
+        }
+
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="canvas-container">
+    <canvas id="personalColorCanvas"></canvas>
+    <div class="loading-spinner" id="loadingSpinner"></div>
+</div>
+
+<script>
+    const canvas = document.getElementById('personalColorCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Canvas 해상도 및 크기 변수
+    let dpi = window.devicePixelRatio || 1;
+    let canvasWidth, canvasHeight;
+    let scaleFactor; // DPI 및 크기에 따른 스케일 팩터
+
+    // UI 상태 관리
+    let currentQuestionIndex = 0;
+    let warmScore = 0;
+    let isQuizActive = true;
+    let mouseX = 0;
+    let mouseY = 0;
+
+    // 색상 팔레트
+    const colors = {
+        primary: '#ff9aa2', // 귀여운 핑크
+        secondary: '#ffb7b2', // 연한 핑크
+        textColor: '#4a4a4a',
+        buttonNormal: '#ff9aa2',
+        buttonHover: '#e0838b',
+        buttonText: '#ffffff',
+        boxBorder: '#ffb7b2',
+        shadow: 'rgba(0, 0, 0, 0.15)'
+    };
+
+    // 테스트 데이터
+    const questions = [
+        {
+            q: "선호하는 액세서리 색상은?",
+            options: [
+                { text: "골드나 따뜻한 로즈 골드", value: 5 }, 
+                { text: "실버나 차가운 플래티넘", value: 1 }
+            ],
+            image: "💍"
+        },
+        {
+            q: "평소 즐겨 입는 옷의 톤은?",
+            options: [
+                { text: "아이보리, 베이지 등 따뜻한 색감", value: 5 },
+                { text: "순백색, 블랙 등 선명한 색감", value: 1 }
+            ],
+            image: "👚"
+        },
+        {
+            q: "피부 혈관을 보면 어떤 색이 주를 이루나요? (손목 안쪽)",
+            options: [
+                { text: "녹색 빛이 더 많이 보여요", value: 5 },
+                { text: "파란색 또는 보라색 빛이 더 많이 보여요", value: 1 }
+            ],
+            image: "✋"
+        },
+        {
+            q: "선호하는 립스틱/블러셔 색상은?",
+            options: [
+                { text: "코랄, 피치, 오렌지 계열", value: 5 },
+                { text: "마젠타, 푸시아, 베리 계열", value: 1 }
+            ],
+            image: "💄"
+        },
+        {
+            q: "염색을 한다면 어떤 계열을 선택할까요?",
+            options: [
+                { text: "레드 오렌지, 골드 브라운 등", value: 5 },
+                { text: "애쉬, 쿨 브라운, 블랙 등", value: 1 }
+            ],
+            image: "💇‍♀️"
+        }
+    ];
+
+    const results = {
+        // 5 Questions (Min 5, Max 25)
+        // 5-9: Winter / 10-14: Summer / 15-19: Autumn / 20-25: Spring
+        'Spring': {
+            name: "봄 웜 (Spring Warm) 🌼",
+            desc: "화사하고 생기 발랄한 매력! 밝고 채도 높은 옐로우 베이스 색상, 코랄, 피치 톤이 잘 어울립니다. 귀여운 느낌을 강조해 보세요.",
+            image: "🌷",
+            color: '#ffc6a9'
+        },
+        'Autumn': {
+            name: "가을 웜 (Autumn Warm) 🍂",
+            desc: "차분하고 깊이 있는 우아함! 채도가 낮고 부드러운 브라운, 카키, 오렌지 계열이 잘 어울립니다. 분위기 있는 룩을 연출해 보세요.",
+            image: "🍁",
+            color: '#c49a6d'
+        },
+        'Summer': {
+            name: "여름 쿨 (Summer Cool) ☁️",
+            desc: "깨끗하고 청량한 느낌의 시원함! 파스텔톤, 회색이 섞인 부드러운 블루/핑크 계열이 잘 어울립니다. 깔끔하고 단아한 매력을 강조해 보세요.",
+            image: "🧊",
+            color: '#b5d7e7'
+        },
+        'Winter': {
+            name: "겨울 쿨 (Winter Cool) 💎",
+            desc: "시크하고 선명한 카리스마! 순백색, 블랙, 비비드한 블루/마젠타 등 대비감이 강한 색상이 잘 어울립니다. 도회적인 매력을 뽐내세요.",
+            image: "❄️",
+            color: '#848c9e'
+        }
+    };
+
+    let buttonBounds = []; // 버튼의 경계를 저장할 배열
+
+    // --- 유틸리티 함수 ---
+
+    /**
+     * 둥근 사각형을 그립니다.
+     */
+    function drawRoundedRect(x, y, w, h, r, fillColor, strokeColor = null, shadow = null) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+        
+        if (shadow) {
+            ctx.shadowColor = shadow.color;
+            ctx.shadowBlur = shadow.blur;
+            ctx.shadowOffsetX = shadow.offsetX;
+            ctx.shadowOffsetY = shadow.offsetY;
+        } else {
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+        }
+
+        if (fillColor) {
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+        }
+        if (strokeColor) {
+            ctx.strokeStyle = strokeColor;
+            ctx.stroke();
+        }
+    }
+
+    /**
+     * 캔버스에 텍스트를 줄 바꿈하여 그립니다.
+     */
+    function wrapText(text, x, y, maxWidth, lineHeight, font) {
+        ctx.font = font;
+        ctx.textAlign = 'center';
+        
+        let words = text.split(' ');
+        let line = '';
+        let lineY = y;
+
+        for (let n = 0; n < words.length; n++) {
+            let testLine = line + words[n] + ' ';
+            let metrics = ctx.measureText(testLine);
+            let testWidth = metrics.width;
+
+            if (testWidth > maxWidth && n > 0) {
+                ctx.fillText(line, x, lineY);
+                line = words[n] + ' ';
+                lineY += lineHeight;
+            } else {
+                line = testLine;
+            }
+        }
+        ctx.fillText(line, x, lineY);
+        return lineY; // 마지막 줄의 Y좌표 반환
+    }
+
+    // --- 퀴즈 로직 ---
+
+    function startQuiz() {
+        currentQuestionIndex = 0;
+        warmScore = 0;
+        isQuizActive = true;
+        drawScene();
+    }
+
+    function selectOption(value) {
+        if (!isQuizActive) return;
+
+        warmScore += value;
+        currentQuestionIndex++;
+        
+        if (currentQuestionIndex < questions.length) {
+            drawScene();
+        } else {
+            showResult();
+        }
+    }
+
+    function showResult() {
+        isQuizActive = false;
+        drawScene();
+    }
+
+    function getResultKey() {
+        // 5 Questions (Min 5, Max 25)
+        if (warmScore >= 20) return 'Spring';
+        if (warmScore >= 15) return 'Autumn';
+        if (warmScore >= 10) return 'Summer';
+        return 'Winter'; // 5-9점
+    }
+
+    // --- 그리기 함수 ---
+
+    /**
+     * 전체 화면을 지우고 기본 배경을 그립니다.
+     */
+    function clearCanvas() {
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        drawRoundedRect(0, 0, canvasWidth, canvasHeight, 25 * scaleFactor, '#ffffff'); // 컨테이너 배경색
+    }
+
+    /**
+     * 캔버스 크기를 조정하고 DPI에 맞춥니다.
+     */
+    function resizeCanvas() {
+        const container = canvas.parentElement;
+        canvasWidth = container.clientWidth;
+        canvasHeight = container.clientHeight;
+
+        // 고해상도(DPI) 조정
+        canvas.width = canvasWidth * dpi;
+        canvas.height = canvasHeight * dpi;
+        ctx.scale(dpi, dpi);
+        
+        scaleFactor = canvasWidth / 500; // 500px 기준의 스케일 팩터
+        
+        drawScene();
+    }
+    
+    /**
+     * 질문 화면을 그립니다.
+     */
+    function drawQuestion(qData, index) {
+        buttonBounds = [];
+        const paddingX = 40 * scaleFactor;
+        const buttonHeight = 60 * scaleFactor;
+        const buttonSpacing = 15 * scaleFactor;
+        const imageSize = 100 * scaleFactor;
+        const centerX = canvasWidth / 2;
+        let currentY = 50 * scaleFactor;
+
+        // 1. 타이틀
+        ctx.fillStyle = colors.primary;
+        ctx.font = `${30 * scaleFactor}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.fillText("퍼스널 컬러 찾기 💖", centerX, currentY);
+        currentY += 50 * scaleFactor;
+
+        // 2. 이미지/아이콘 박스
+        const imageBoxY = currentY;
+        drawRoundedRect(
+            centerX - (imageSize * 1.5) / 2, 
+            imageBoxY, 
+            imageSize * 1.5, 
+            imageSize, 
+            15 * scaleFactor, 
+            colors.secondary
+        );
+        ctx.fillStyle = colors.buttonText;
+        ctx.font = `${60 * scaleFactor}px Arial`;
+        ctx.fillText(qData.image, centerX, imageBoxY + imageSize * 0.7);
+        currentY += imageSize + 30 * scaleFactor;
+
+        // 3. 질문 텍스트
+        ctx.fillStyle = colors.textColor;
+        ctx.font = `bold ${18 * scaleFactor}px Arial`;
+        const questionText = `${index + 1}. ${qData.q}`;
+        
+        // 텍스트 줄바꿈 처리 및 Y 위치 업데이트
+        currentY = wrapText(questionText, centerX, currentY, canvasWidth - paddingX * 2, 25 * scaleFactor, ctx.font);
+        currentY += 40 * scaleFactor;
+
+        // 4. 선택지 버튼
+        const buttonWidth = canvasWidth - paddingX * 2;
+        
+        qData.options.forEach((option, i) => {
+            const buttonY = currentY;
+            const isHovered = (
+                mouseX > centerX - buttonWidth / 2 &&
+                mouseX < centerX + buttonWidth / 2 &&
+                mouseY > buttonY &&
+                mouseY < buttonY + buttonHeight
+            );
+
+            const fillColor = isHovered ? colors.buttonHover : colors.buttonNormal;
+            
+            // 버튼 배경 (둥근 사각형)
+            drawRoundedRect(
+                centerX - buttonWidth / 2, 
+                buttonY, 
+                buttonWidth, 
+                buttonHeight, 
+                10 * scaleFactor, 
+                fillColor,
+                null, // No stroke
+                { color: colors.shadow, blur: 10, offsetX: 0, offsetY: 5 * scaleFactor }
+            );
+
+            // 버튼 텍스트
+            ctx.fillStyle = colors.buttonText;
+            ctx.font = `${16 * scaleFactor}px Arial`;
+            ctx.fillText(option.text, centerX, buttonY + buttonHeight / 2 + 5 * scaleFactor);
+
+            // 경계 저장
+            buttonBounds.push({
+                x: centerX - buttonWidth / 2,
+                y: buttonY,
+                w: buttonWidth,
+                h: buttonHeight,
+                value: option.value
+            });
+
+            currentY += buttonHeight + buttonSpacing;
+        });
+    }
+
+    /**
+     * 결과 화면을 그립니다.
+     */
+    function drawResult() {
+        buttonBounds = [];
+        const result = results[getResultKey()];
+        const centerX = canvasWidth / 2;
+        let currentY = 50 * scaleFactor;
+        const paddingX = 40 * scaleFactor;
+
+        // 1. 타이틀
+        ctx.fillStyle = colors.primary;
+        ctx.font = `bold ${30 * scaleFactor}px Arial`;
+        ctx.fillText("결과가 나왔어요! 🎉", centerX, currentY);
+        currentY += 50 * scaleFactor;
+
+        // 2. 결과 이미지/아이콘
+        const imageSize = 120 * scaleFactor;
+        drawRoundedRect(
+            centerX - imageSize / 2, 
+            currentY, 
+            imageSize, 
+            imageSize, 
+            15 * scaleFactor, 
+            result.color, // 결과에 따른 색상
+            null,
+            { color: colors.shadow, blur: 15, offsetX: 0, offsetY: 7 * scaleFactor }
+        );
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `${80 * scaleFactor}px Arial`;
+        ctx.fillText(result.image, centerX, currentY + imageSize * 0.75);
+        currentY += imageSize + 30 * scaleFactor;
+
+
+        // 3. 최종 컬러 이름
+        ctx.fillStyle = result.color;
+        ctx.font = `bold ${24 * scaleFactor}px Arial`;
+        currentY = wrapText(result.name, centerX, currentY, canvasWidth - paddingX * 2, 30 * scaleFactor, ctx.font);
+        currentY += 30 * scaleFactor;
+
+        // 4. 설명 텍스트
+        ctx.fillStyle = colors.textColor;
+        ctx.font = `${16 * scaleFactor}px Arial`;
+        currentY = wrapText(result.desc, centerX, currentY, canvasWidth - paddingX * 2, 24 * scaleFactor, ctx.font);
+        currentY += 50 * scaleFactor;
+
+        // 5. 다시 시작 버튼
+        const buttonWidth = canvasWidth * 0.6;
+        const buttonHeight = 50 * scaleFactor;
+        const buttonY = currentY;
+
+        const isHovered = (
+            mouseX > centerX - buttonWidth / 2 &&
+            mouseX < centerX + buttonWidth / 2 &&
+            mouseY > buttonY &&
+            mouseY < buttonY + buttonHeight
+        );
+
+        const fillColor = isHovered ? colors.buttonHover : colors.secondary;
+        
+        drawRoundedRect(
+            centerX - buttonWidth / 2, 
+            buttonY, 
+            buttonWidth, 
+            buttonHeight, 
+            10 * scaleFactor, 
+            fillColor,
+            null,
+            { color: colors.shadow, blur: 10, offsetX: 0, offsetY: 5 * scaleFactor }
+        );
+
+        ctx.fillStyle = colors.buttonText;
+        ctx.font = `bold ${16 * scaleFactor}px Arial`;
+        ctx.fillText("다시 테스트하기", centerX, buttonY + buttonHeight / 2 + 5 * scaleFactor);
+
+        // 경계 저장
+        buttonBounds.push({
+            x: centerX - buttonWidth / 2,
+            y: buttonY,
+            w: buttonWidth,
+            h: buttonHeight,
+            action: 'restart'
+        });
+    }
+
+    /**
+     * 메인 씬 드로잉 함수
+     */
+    function drawScene() {
+        clearCanvas();
+
+        if (isQuizActive) {
+            const qData = questions[currentQuestionIndex];
+            if (qData) {
+                drawQuestion(qData, currentQuestionIndex);
+            } else {
+                showResult(); // 혹시 모를 에러 방지
+            }
+        } else {
+            drawResult();
+        }
+    }
+
+    // --- 이벤트 핸들러 ---
+
+    // 마우스 이동 감지 (호버 효과)
+    canvas.onmousemove = (event) => {
+        const rect = canvas.getBoundingClientRect();
+        mouseX = event.clientX - rect.left;
+        mouseY = event.clientY - rect.top;
+        drawScene(); // 호버 상태를 업데이트하기 위해 다시 그립니다.
+    };
+
+    // 마우스 클릭 감지 (버튼 상호작용)
+    canvas.onclick = (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+
+        // 클릭된 버튼 찾기
+        for (const bound of buttonBounds) {
+            if (
+                clickX > bound.x &&
+                clickX < bound.x + bound.w &&
+                clickY > bound.y &&
+                clickY < bound.y + bound.h
+            ) {
+                if (bound.action === 'restart') {
+                    startQuiz();
+                } else {
+                    selectOption(bound.value);
+                }
+                return;
+            }
+        }
+    };
+    
+    // 윈도우 로드 및 리사이즈 이벤트
+    window.onload = resizeCanvas;
+    window.onresize = resizeCanvas;
+
+    // 초기 시작
+    // resizeCanvas 호출로 인해 startQuiz가 간접적으로 실행됨
+</script>
+
+</body>
+</html>
